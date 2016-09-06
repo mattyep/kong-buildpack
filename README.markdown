@@ -37,6 +37,8 @@ Deploy the [heroku-kong app](https://github.com/heroku/heroku-kong) to get start
     * example `https://github.com/mars/kong.git`
   * `KONG_GIT_COMMITISH` git branch/tag/commit for Kong source
     * example `0.7.0-external-supervisor.1` or `master`
+  *
+  	*`DISABLE_BUILPACK_CACHE` when set to true, will delete the old directory handling kong source code.
   * Cassandra datastore
     * Heroku-style config vars
       * `CASSANDRA_URL`
