@@ -41,7 +41,14 @@ else
   KONG_GIT_COMMITISH="0.7.0-external-supervisor.1"
 fi
 
+
 KONG_SOURCE_DIR="${BP_CACHE_DIR}/kong-source"
+
+# Remove previous build
+if [ -d "$KONG_SOURCE_DIR" ]
+then
+  rm -rf $KONG_SOURCE_DIR
+fi
 
 # Set dependency versions.
 # These correspond to the archives in `vendor/`.
