@@ -43,6 +43,19 @@ fi
 
 KONG_SOURCE_DIR="${BP_CACHE_DIR}/kong-source"
 
+# Manage buildpack cache.
+DISABLE_BUILDPACK_CACHE= false
+if [ -f "${ENV_DIR}/DISABLE_BUILDPACK_CACHE" ]
+then
+  DISABLE_BUILDPACK_CACHE= `cat ${ENV_DIR}/DISABLE_BUILDPACK_CACHE`
+fi
+
+if [[ -d "$KONG_SOURCE_DIR" ]] &&
+  [[ $DISABLE_BUILDPACK_CACHE == true ]]
+then
+  rm -rf ${KONG_SOURCE_DIR}
+fi
+
 # Set dependency versions.
 # These correspond to the archives in `vendor/`.
 # If upgrading any those archives, then update the corresponding version here.
