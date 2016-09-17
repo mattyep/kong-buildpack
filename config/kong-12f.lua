@@ -263,7 +263,7 @@ env_file:write("export DNSMASQ_PORT="..configuration.dns_resolver.port.."\n")
 env_file:write("export SERF_CLUSTER_LISTEN="..configuration.cluster_listen.."\n")
 env_file:write("export SERF_CLUSTER_LISTEN_RPC="..configuration.cluster_listen_rpc.."\n")
 env_file:write("export SERF_ENCRYPT="..(configuration.cluster.encrypt or '""').."\n")
-env_file:write("export SERF_NODE_NAME="..cluster_utils.get_node_name(configuration).."\n")
+env_file:write("export SERF_NODE_NAME="..cluster_utils.get_node_identifier(configuration).."\n")
 env_file:write("export SERF_LOG_LEVEL="..serf_log_level.."\n")
 -- In the event handler, "kong" value is a copy of hardcoded,
 -- local var `EVENT_NAME` in kong.cli.services.serf
