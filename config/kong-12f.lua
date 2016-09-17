@@ -143,7 +143,7 @@ if datastore == "INSTACLUSTR" or datastore == "CASSANDRA" then
   }
 end
 
-if datastore == "POSTGRES"
+if datastore == "POSTGRES" then
   -- Configure Postgres - should probably add something in here to handle different SSL modes for non-Heroku DBs
   local postgres_user
   local postgres_password
