@@ -50,10 +50,13 @@ then
   DISABLE_BUILDPACK_CACHE=`cat ${ENV_DIR}/DISABLE_BUILDPACK_CACHE`
 fi
 
+echo "DISABLE_BUILDPACK_CACHE : $DISABLE_BUILDPACK_CACHE"
+
 if [[ -d "$KONG_SOURCE_DIR" ]] &&
   [[ $DISABLE_BUILDPACK_CACHE == true ]]
 then
   rm -rf ${KONG_SOURCE_DIR}
+  echo "Removed cache dir : $KONG_SOURCE_DIR"
 fi
 
 # Set dependency versions.
