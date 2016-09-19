@@ -28,7 +28,6 @@ local rel_env_file    = ".profile.d/kong-env"
 -- second arg: the buildpack/app directory
 local template_filename = arg[1]
 local config_filename   = arg[2].."/"..rel_config_file
-local cert_filename     = arg[2].."/config/cassandra.cert"
 
 -- not an `*.sh` file, because the Dyno manager should not exec
 local env_filename  = arg[2].."/"..rel_env_file
@@ -50,132 +49,31 @@ if not cluster_address then
 end
 local cluster_listen    = cluster_address..":"..cluster_port
 
--- Allow log level to be overridden - useful for debugging - set to default otherwise
 local serf_log_level    = os.getenv("SERF_LOG_LEVEL") or "err"
 local kong_log_level    = os.getenv("KONG_LOG_LEVEL") or "info"
 
--- Detect datastore based on environment variables present - or allow override using KONG_DATASTORE
-local datastore = nil
-local datastore_values = {}
-if os.getenv("KONG_DATASTORE") ~= nil then
-  datastore = os.getenv("KONG_DATASTORE")
-elseif os.getenv("IC_CONTACT_POINTS") ~= nil then
-  datastore = "INSTACLUSTR"
-elseif os.getenv("CASSANDRA_URL") ~= nil then
-  datastore = "CASSANDRA"
-elseif os.getenv("DATABASE_URL") ~= nil then
-  datastore = "POSTGRES"
+-- Configure Postgres
+local postgres_user
+local postgres_password
+local postgres_host
+local postgres_port
+local postgres_database
+
+if os.getenv("DATABASE_URL") ~= nil then
+  -- Default to parsing `DATABASE_URL`,
+  -- a comma-separated list of Heroku-style database URLs
+  local url_pattern     = "postgres://([^:]+):([^@]+)@([^:]+):([^/]+)/([^,]+)"
+  local database_url    = os.getenv("DATABASE_URL")
+  for user, password, host, port, database in string.gmatch(database_url, url_pattern) do
+    postgres_user      = user
+    postgres_password  = password
+    postgres_host      = host
+    postgres_port      = port
+    postgres_database  = database
+  end
 else
-  print("Configuration failed: requires datastore environment variables.")
+  print("Configuration failed: requires `DATABASE_URL`environment variable.")
   eager_fail()
-end
-
-if datastore == "INSTACLUSTR" or datastore == "CASSANDRA" then
-  -- Configure Cassandra using Instaclustr or Heroku-style config vars
-  local cassandra_hosts   = {}
-  local cassandra_user
-  local cassandra_password
-  local cassandra_keyspace
-  local cassandra_ssl     = false
-  local cassandra_cert
-
-  if datastore == "INSTACLUSTR" then
-    -- Detect Instaclustr from the `IC_CONTACT_POINTS` config var
-    cassandra_user        = os.getenv("IC_USER")
-    cassandra_password    = os.getenv("IC_PASSWORD")
-    cassandra_cert        = os.getenv("IC_CERTIFICATE")
-    local port            = os.getenv("IC_PORT")
-    cassandra_hosts       = _.map(
-      lub.split(os.getenv("IC_CONTACT_POINTS"), ","),
-      function(k,v)
-        if port then
-          return v..":"..port
-        else
-          return v
-        end
-      end
-    )
-  end
-
-  if datastore == "CASSANDRA" then
-    -- Default to parsing `CASSANDRA_URL`,
-    -- a comma-separated list of Heroku-style database URLs
-    local url_pattern     = "cassandra://([^:]+):([^@]+)@([^/]+)/([^,]+)"
-    local cassandra_url   = os.getenv("CASSANDRA_URL")
-    for user, password, host, keyspace in string.gmatch(cassandra_url, url_pattern) do
-      cassandra_user      = user
-      cassandra_password  = password
-      cassandra_keyspace  = keyspace
-      table.insert(cassandra_hosts, host)
-    end
-    cassandra_cert        = os.getenv("CASSANDRA_TRUSTED_CERT") 
-  else
-    print("Configuration failed: requires `CASSANDRA_URL` or `IC_CONTACT_POINTS` environment variable.")
-    eager_fail()
-  end
-
-  -- Prefer replication factor of three or less (then, the number of hosts)
-  local cassandra_replication_factor = math.min(3, #cassandra_hosts)
-
-  -- Default keyspace to value of `CASSANDRA_KEYSPACE` or simply "kong".
-  cassandra_keyspace = cassandra_keyspace or os.getenv("CASSANDRA_KEYSPACE") or "kong"
-
-  -- SSL with Cassandra is enabled when a certificate was
-  -- provided via `CASSANDRA_TRUSTED_CERT` or `IC_CERTIFICATE`.
-  if cassandra_cert and string.match(cassandra_cert, '-----BEGIN CERTIFICATE-----') then
-    local cert_file
-    cert_file = io.open(cert_filename, "w")
-    cert_file:write(cassandra_cert)
-    cert_file:close()
-
-    cassandra_ssl = true
-  end
-  
-  datastore_values = {
-    database            = "cassandra",
-    cassandra_hosts     = cassandra_hosts,
-    cassandra_user      = cassandra_user,
-    cassandra_password  = cassandra_password,
-    cassandra_keyspace  = cassandra_keyspace,
-    cassandra_ssl       = cassandra_ssl,
-    cassandra_cert      = cert_filename,
-    cassandra_replication_factor = cassandra_replication_factor
-  }
-end
-
-if datastore == "POSTGRES" then
-  -- Configure Postgres - should probably add something in here to handle different SSL modes for non-Heroku DBs
-  local postgres_user
-  local postgres_password
-  local postgres_host
-  local postgres_port
-  local postgres_database
-
-  if os.getenv("DATABASE_URL") ~= nil then
-    -- Default to parsing `DATABASE_URL`,
-    -- a comma-separated list of Heroku-style database URLs
-    local url_pattern     = "postgres://([^:]+):([^@]+)@([^:]+):([^/]+)/([^,]+)"
-    local database_url    = os.getenv("DATABASE_URL")
-    for user, password, host, port, database in string.gmatch(database_url, url_pattern) do
-      postgres_user      = user
-      postgres_password  = password
-      postgres_host      = host
-      postgres_port      = port
-      postgres_database  = database
-    end
-  else
-    print("Configuration failed: requires `DATABASE_URL`environment variable.")
-    eager_fail()
-  end
-  
-  datastore_values = {
-    database            = "postgres",
-    postgres_user       = postgres_user,
-    postgres_password   = postgres_password,
-    postgres_host       = postgres_host,
-    postgres_port       = postgres_port,
-    postgres_database   = postgres_database
-  }
 end
 
 -- Configure the service to expose on PORT
@@ -221,11 +119,13 @@ local values = {
   cluster_listen      = cluster_listen,
   cluster_secret      = cluster_secret,
   dnsmasq_port        = dnsmasq_port,
+  postgres_user       = postgres_user,
+  postgres_password   = postgres_password,
+  postgres_host       = postgres_host,
+  postgres_port       = postgres_port,
+  postgres_database   = postgres_database,
   kong_log_level      = kong_log_level
 }
-
--- Merge datastore values into values
-for k,v in pairs(datastore_values) do values[k] = v end
 
 local config = template(values)
 
@@ -263,8 +163,9 @@ env_file:write("export DNSMASQ_PORT="..configuration.dns_resolver.port.."\n")
 env_file:write("export SERF_CLUSTER_LISTEN="..configuration.cluster_listen.."\n")
 env_file:write("export SERF_CLUSTER_LISTEN_RPC="..configuration.cluster_listen_rpc.."\n")
 env_file:write("export SERF_ENCRYPT="..(configuration.cluster.encrypt or '""').."\n")
-env_file:write("export SERF_NODE_NAME="..cluster_utils.get_node_identifier(configuration).."\n")
+env_file:write("export SERF_NODE_NAME="..cluster_utils.get_node_name(configuration).."\n")
 env_file:write("export SERF_LOG_LEVEL="..serf_log_level.."\n")
+
 -- In the event handler, "kong" value is a copy of hardcoded,
 -- local var `EVENT_NAME` in kong.cli.services.serf
 env_file:write("export SERF_EVENT_HANDLER=".."member-join,member-leave,member-failed,member-update,member-reap,user:kong="..prepared_services.serf._script_path.."\n")
