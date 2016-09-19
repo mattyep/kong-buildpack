@@ -109,7 +109,10 @@ end
 
 -- Render the Kong configuration file
 local template_file = io.open(template_filename, "r")
-local template = etlua.compile(template_file:read("*a"))
+local template, err = etlua.compile(template_file:read("*a"))
+if template == nil then
+  print(err)
+end
 template_file:close()
 
 local values = {
